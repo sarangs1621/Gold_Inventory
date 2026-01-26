@@ -8431,6 +8431,91 @@ async def get_transaction_delete_impact(transaction_id: str, current_user: User 
     }
 
 
+@api_router.delete("/transactions/{transaction_id}")
+@limiter.limit("1000/hour")
+async def delete_transaction(
+    request: Request,
+    transaction_id: str,
+    current_user: User = Depends(require_permission('finance.delete'))
+):
+    """
+    Delete a transaction and reverse its account balance impact.
+    
+    ACCOUNTING RULES:
+    - Can only delete transactions NOT linked to invoices (manual transactions)
+    - Invoice payment transactions should not be deleted directly
+    - Reverses the account balance change when deleted
+    - Soft delete with audit trail
+    """
+    # Fetch transaction
+    transaction = await db.transactions.find_one({"id": transaction_id, "is_deleted": False})
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Check if linked to invoice - BLOCK deletion
+    if transaction.get("reference_type") == "invoice":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete invoice payment transactions. Delete the invoice or payment record instead."
+        )
+    
+    # Get transaction details for balance reversal
+    account_id = transaction.get('account_id')
+    amount = transaction.get('amount', 0)
+    transaction_type = transaction.get('transaction_type', 'debit')
+    
+    # Calculate balance reversal
+    # If original was debit (increased asset), reverse decreases it
+    # If original was credit (increased income/liability), reverse decreases it
+    if transaction_type == "debit":
+        balance_delta = -amount  # Reverse: decrease balance
+    else:  # credit
+        balance_delta = -amount  # Reverse: decrease balance
+    
+    # Soft delete transaction
+    await db.transactions.update_one(
+        {"id": transaction_id},
+        {
+            "$set": {
+                "is_deleted": True,
+                "deleted_at": datetime.now(timezone.utc),
+                "deleted_by": current_user.id
+            }
+        }
+    )
+    
+    # Reverse account balance
+    if account_id:
+        await db.accounts.update_one(
+            {"id": account_id},
+            {"$inc": {"current_balance": balance_delta}}
+        )
+    
+    # Create audit log
+    await create_audit_log(
+        current_user.id,
+        current_user.full_name,
+        "transaction",
+        transaction_id,
+        "delete",
+        {
+            "transaction_number": transaction.get('transaction_number'),
+            "amount": amount,
+            "transaction_type": transaction_type,
+            "account_id": account_id,
+            "balance_reversed": balance_delta
+        }
+    )
+    
+    return {
+        "message": "Transaction deleted successfully",
+        "transaction_id": transaction_id,
+        "account_balance_adjusted": bool(account_id),
+        "balance_change": balance_delta
+    }
+
+
+
 
 # ============================================================================
 # RETURNS MANAGEMENT API ENDPOINTS
