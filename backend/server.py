@@ -4911,70 +4911,9 @@ async def add_payment_to_invoice(
                     }
                 )
             else:
-                # 3. Create customer ledger entry (Transaction) - only if finalization succeeded
-                if invoice.grand_total > 0:
-                    # Generate transaction number for ledger entry
-                    year = datetime.now(timezone.utc).year
-                    count = await db.transactions.count_documents({"transaction_number": {"$regex": f"^TXN-{year}"}})
-                    ledger_transaction_number = f"TXN-{year}-{str(count + 1).zfill(4)}"
-                    
-                    # Get or create a default sales account
-                    sales_account = await db.accounts.find_one({"name": "Sales"})
-                    if not sales_account:
-                        # Create default sales account if it doesn't exist
-                        default_account = {
-                            "id": str(uuid.uuid4()),
-                            "name": "Sales",
-                            "account_type": "asset",
-                            "opening_balance": 0,
-                            "current_balance": 0,
-                            "created_by": current_user.id,
-                            "created_at": finalized_at,
-                            "is_deleted": False
-                        }
-                        await db.accounts.insert_one(default_account)
-                        sales_account = default_account
-                    
-                    # Determine transaction type based on invoice type
-                    transaction_type = "debit" if invoice.invoice_type in ["sale", "service"] else "credit"
-                    
-                    # For gold exchange, party details
-                    ledger_party_id = invoice.customer_id
-                    ledger_party_name = invoice.customer_name or "Unknown Customer"
-                    ledger_notes = f"Invoice {invoice.invoice_number} auto-finalized (full gold exchange payment received)"
-                    
-                    # Create ledger entry as a transaction with invoice reference
-                    ledger_entry = Transaction(
-                        transaction_number=ledger_transaction_number,
-                        transaction_type=transaction_type,
-                        mode="invoice",
-                        account_id=sales_account["id"],
-                        account_name=sales_account["name"],
-                        party_id=ledger_party_id,
-                        party_name=ledger_party_name,
-                        amount=invoice.grand_total,
-                        category="Sales Invoice",
-                        notes=ledger_notes,
-                        reference_type="invoice",
-                        reference_id=invoice.id,
-                        created_by=current_user.id
-                    )
-                    await db.transactions.insert_one(ledger_entry.model_dump())
-                    
-                    await create_audit_log(
-                        current_user.id,
-                        current_user.full_name,
-                        "transaction",
-                        ledger_entry.id,
-                        "create",
-                        {
-                            "invoice_id": invoice.id, 
-                            "amount": invoice.grand_total,
-                            "customer_type": invoice.customer_type,
-                            "auto_finalized": True,
-                            "payment_mode": "GOLD_EXCHANGE"
-                        }
-                    )
+                # 3. NO ledger entry creation on auto-finalization (gold exchange)
+                # Payment transaction was ALREADY created with proper double-entry above
+                # Auto-finalization only handles stock and job card locking
                 
                 # Create audit log for auto-finalization
                 await create_audit_log(
@@ -4987,7 +4926,7 @@ async def add_payment_to_invoice(
                         "status": "finalized",
                         "finalized_at": finalized_at.isoformat(),
                         "jobcard_locked": bool(invoice.jobcard_id),
-                        "ledger_entry_created": bool(invoice.grand_total > 0),
+                        "ledger_entry_created": False,  # No extra ledger entry - payment already created double-entry
                         "customer_type": invoice.customer_type,
                         "trigger": "full_gold_exchange_payment_received"
                     }
