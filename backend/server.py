@@ -27,6 +27,57 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# ============================================================================
+# ACCOUNTING CONFIGURATION - STRICT TAXONOMY
+# ============================================================================
+
+# Valid account types (LOCKED - do not modify)
+VALID_ACCOUNT_TYPES = {'asset', 'income', 'expense', 'liability', 'equity'}
+
+# Protected standard accounts that cannot be deleted
+PROTECTED_ACCOUNTS = {
+    'Cash', 'Bank', 'Petty Cash', 'Sales Income', 'Sales', 
+    'Gold Exchange Income', 'Gold Exchange'
+}
+
+def validate_account_type(account_type: str) -> bool:
+    """Validate that account type is in the allowed taxonomy"""
+    return account_type.lower() in VALID_ACCOUNT_TYPES
+
+def calculate_balance_delta(account_type: str, transaction_type: str, amount: float) -> float:
+    """
+    Calculate balance change based on account type and transaction type.
+    
+    ACCOUNTING RULES (NON-NEGOTIABLE):
+    - ASSET/EXPENSE: Debit increases (+), Credit decreases (-)
+    - INCOME/LIABILITY/EQUITY: Credit increases (+), Debit decreases (-)
+    
+    Examples:
+    - Cash (ASSET) + Debit $100 = +$100 balance
+    - Cash (ASSET) + Credit $100 = -$100 balance
+    - Sales Income (INCOME) + Credit $100 = +$100 balance
+    - Sales Income (INCOME) + Debit $100 = -$100 balance
+    """
+    account_type = account_type.lower()
+    
+    if account_type in ['asset', 'expense']:
+        # Debit increases, Credit decreases
+        return amount if transaction_type == 'debit' else -amount
+    else:  # income, liability, equity
+        # Credit increases, Debit decreases
+        return amount if transaction_type == 'credit' else -amount
+
+def get_normal_balance(account_type: str) -> str:
+    """
+    Get the normal balance side for an account type.
+    Returns: 'debit' or 'credit'
+    """
+    account_type = account_type.lower()
+    if account_type in ['asset', 'expense']:
+        return 'debit'
+    else:  # income, liability, equity
+        return 'credit'
+
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
