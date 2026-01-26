@@ -7051,8 +7051,22 @@ async def get_financial_summary(
     bank_balance = sum(acc.get('current_balance', 0) for acc in accounts 
                       if 'bank' in acc.get('account_type', '').lower())
     
-    # NEW: Calculate net flow
-    net_flow = total_credit - total_debit
+    # FIX: Calculate net flow from Cash/Bank transactions only (actual cash flow)
+    # Build account type map for filtering
+    account_type_map = {acc.get('id'): acc.get('account_type', '').lower() for acc in accounts if 'id' in acc}
+    
+    # Calculate cash/bank credits and debits only
+    cash_bank_credit = sum(
+        txn.get('amount', 0) for txn in transactions 
+        if txn.get('transaction_type') == 'credit' and 
+        account_type_map.get(txn.get('account_id'), '') in ['cash', 'petty', 'bank']
+    )
+    cash_bank_debit = sum(
+        txn.get('amount', 0) for txn in transactions 
+        if txn.get('transaction_type') == 'debit' and 
+        account_type_map.get(txn.get('account_id'), '') in ['cash', 'petty', 'bank']
+    )
+    net_flow = cash_bank_credit - cash_bank_debit
     
     # NEW: Get daily closing difference for today (or selected date range)
     daily_closing_difference = 0
