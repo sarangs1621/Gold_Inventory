@@ -967,12 +967,20 @@ class Account(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    account_type: str
+    account_type: str  # Must be one of: asset, income, expense, liability, equity
     opening_balance: float = 0
     current_balance: float = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str
     is_deleted: bool = False
+    
+    def model_post_init(self, __context) -> None:
+        """Validate account type after initialization"""
+        if not validate_account_type(self.account_type):
+            raise ValueError(
+                f"Invalid account_type '{self.account_type}'. "
+                f"Must be one of: {', '.join(VALID_ACCOUNT_TYPES)}"
+            )
 
 class Transaction(BaseModel):
     model_config = ConfigDict(extra="ignore")
