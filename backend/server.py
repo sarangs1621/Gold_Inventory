@@ -5703,9 +5703,22 @@ async def create_account(account_data: dict, current_user: User = Depends(requir
 
 @api_router.patch("/accounts/{account_id}")
 async def update_account(account_id: str, update_data: dict, current_user: User = Depends(require_permission('finance.create'))):
+    """
+    Update an account. If account_type is being changed, validates it's a valid type.
+    """
     existing = await db.accounts.find_one({"id": account_id, "is_deleted": False})
     if not existing:
         raise HTTPException(status_code=404, detail="Account not found")
+    
+    # Validate account_type if it's being updated
+    if 'account_type' in update_data:
+        account_type = update_data['account_type'].lower()
+        if not validate_account_type(account_type):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid account_type '{account_type}'. Must be one of: {', '.join(VALID_ACCOUNT_TYPES)}"
+            )
+        update_data['account_type'] = account_type
     
     await db.accounts.update_one({"id": account_id}, {"$set": update_data})
     await create_audit_log(current_user.id, current_user.full_name, "account", account_id, "update", update_data)
