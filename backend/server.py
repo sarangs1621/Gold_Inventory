@@ -5727,9 +5727,20 @@ async def update_account(account_id: str, update_data: dict, current_user: User 
 @api_router.delete("/accounts/{account_id}")
 @limiter.limit("30/minute")  # Sensitive finance operation: 30 deletions per minute
 async def delete_account(request: Request, account_id: str, current_user: User = Depends(require_permission('finance.delete'))):
+    """
+    Delete an account. Protected accounts (Cash, Bank, Sales Income, etc.) cannot be deleted.
+    """
     existing = await db.accounts.find_one({"id": account_id, "is_deleted": False})
     if not existing:
         raise HTTPException(status_code=404, detail="Account not found")
+    
+    # Check if this is a protected account
+    account_name = existing.get('name', '')
+    if account_name in PROTECTED_ACCOUNTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete protected account '{account_name}'. This account is required for system operations."
+        )
     
     # Check if account has transactions
     transactions = await db.transactions.find_one({"account_id": account_id, "is_deleted": False})
