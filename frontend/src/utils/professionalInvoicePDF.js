@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
+
 
 /**
  * Generate Professional Gold ERP Invoice PDF
@@ -189,7 +190,7 @@ export const generateProfessionalInvoicePDF = (invoiceData, shopSettings, paymen
       ];
     });
     
-    doc.autoTable({
+    autoTable(doc, {
       startY: tableStartY,
       head: [tableHeaders],
       body: tableData,
@@ -369,7 +370,7 @@ export const generateProfessionalInvoicePDF = (invoiceData, shopSettings, paymen
         payment.notes || '-'
       ]);
       
-      doc.autoTable({
+      autoTable(doc, {
         startY: currentY,
         head: paymentHeaders,
         body: paymentData,

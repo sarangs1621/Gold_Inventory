@@ -82,6 +82,8 @@ cd frontend
 ### Step 2: Install Dependencies
 ```
 npm install
+npm install jspdf jspdf-autotable
+
 ```
 
 ### Step 3: Start Frontend Server
