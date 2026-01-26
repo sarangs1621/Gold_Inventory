@@ -4573,56 +4573,8 @@ async def finalize_invoice(invoice_id: str, current_user: User = Depends(require
         # Transactions are only created when PAYMENT is received
         # This section has been removed to fix accounting model
         
-        # Determine transaction type based on invoice type
-        # For sales and service invoices, customer owes money (debit to customer account)
-        # For purchase invoices, we owe money (credit to supplier account)
-        transaction_type = "debit" if invoice.invoice_type in ["sale", "service"] else "credit"
-        
-        # Prepare party information based on customer type
-        if invoice.customer_type == "walk_in":
-            # Walk-in customers: no party_id, use walk-in name/phone in notes
-            party_id = None
-            party_name = None
-            notes = f"Invoice {invoice.invoice_number} finalized - Walk-in Customer: {invoice.walk_in_name or 'Unknown'}"
-            if invoice.walk_in_phone:
-                notes += f" (Ph: {invoice.walk_in_phone})"
-        else:
-            # Saved customers: use party_id and party_name
-            party_id = invoice.customer_id
-            party_name = invoice.customer_name or "Unknown Customer"
-            notes = f"Invoice {invoice.invoice_number} finalized"
-        
-        # Create ledger entry as a transaction with invoice reference
-        ledger_entry = Transaction(
-            transaction_number=transaction_number,
-            transaction_type=transaction_type,
-            mode="invoice",
-            account_id=sales_account["id"],
-            account_name=sales_account["name"],
-            party_id=party_id,  # None for walk-in, UUID for saved
-            party_name=party_name,  # None for walk-in, name for saved
-            amount=invoice.grand_total,
-            category="Sales Invoice",
-            notes=notes,
-            reference_type="invoice",  # Link to invoice
-            reference_id=invoice.id,  # Invoice UUID
-            created_by=current_user.id
-        )
-        await db.transactions.insert_one(ledger_entry.model_dump())
-        
-        await create_audit_log(
-            current_user.id,
-            current_user.full_name,
-            "transaction",
-            ledger_entry.id,
-            "create",
-            {
-                "invoice_id": invoice.id, 
-                "amount": invoice.grand_total,
-                "customer_type": invoice.customer_type,
-                "is_walk_in": invoice.customer_type == "walk_in"
-            }
-        )
+        # REMOVED: Invoice finalization should NOT create transactions
+        # Only payment receipt creates transactions (double-entry)
     
     # Step 5: Outstanding balance is automatically updated
     # The balance_due field in the invoice record already tracks outstanding amount
