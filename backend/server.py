@@ -4967,11 +4967,12 @@ async def add_payment_to_invoice(
             current_user.id,
             current_user.full_name,
             "transaction",
-            transaction.id,
+            credit_transaction.id,
             "create",
             {
                 "invoice_id": invoice_id,
                 "payment_mode": "GOLD_EXCHANGE",
+                "transaction_type": "credit",
                 "gold_weight_grams": gold_weight_grams,
                 "rate_per_gram": rate_per_gram,
                 "payment_amount": payment_amount
@@ -4997,14 +4998,13 @@ async def add_payment_to_invoice(
         
         # Return success response with GOLD_EXCHANGE details
         return {
-            "message": "Gold exchange payment added successfully",
-            "payment_mode": "GOLD_EXCHANGE",
+            "message": "Gold exchange payment added successfully (revenue recognized)",
+            "transaction_id": credit_transaction.id,
+            "transaction_number": credit_txn_number,
             "gold_ledger_entry_id": gold_ledger_entry.id,
             "gold_weight_grams": gold_weight_grams,
             "rate_per_gram": rate_per_gram,
             "gold_money_value": payment_amount,
-            "transaction_id": transaction.id,
-            "transaction_number": transaction_number,
             "new_paid_amount": new_paid_amount,
             "new_balance_due": max(0, new_balance_due),
             "payment_status": new_payment_status,
