@@ -5882,6 +5882,16 @@ async def get_transactions(
 
 @api_router.post("/transactions", response_model=Transaction)
 async def create_transaction(transaction_data: dict, current_user: User = Depends(require_permission('finance.create'))):
+    """
+    Create a manual finance transaction.
+    
+    WARNING: Manual transactions should be created in pairs for double-entry bookkeeping.
+    Consider creating both debit and credit sides to maintain balance.
+    
+    Balance update rules:
+    - ASSET/EXPENSE accounts: Debit increases, Credit decreases
+    - INCOME/LIABILITY/EQUITY accounts: Credit increases, Debit decreases
+    """
     year = datetime.now(timezone.utc).year
     count = await db.transactions.count_documents({"transaction_number": {"$regex": f"^TXN-{year}"}})
     transaction_number = f"TXN-{year}-{str(count + 1).zfill(4)}"
@@ -5889,6 +5899,14 @@ async def create_transaction(transaction_data: dict, current_user: User = Depend
     account = await db.accounts.find_one({"id": transaction_data['account_id']}, {"_id": 0})
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+    
+    # Validate transaction type
+    transaction_type = transaction_data.get('transaction_type', '').lower()
+    if transaction_type not in ['debit', 'credit']:
+        raise HTTPException(
+            status_code=400,
+            detail="transaction_type must be either 'debit' or 'credit'"
+        )
     
     # Remove conflicting keys and add required fields
     transaction_data_clean = {k: v for k, v in transaction_data.items() if k not in ['transaction_number', 'account_name', 'created_by']}
@@ -5901,13 +5919,30 @@ async def create_transaction(transaction_data: dict, current_user: User = Depend
     
     await db.transactions.insert_one(transaction.model_dump())
     
-    delta = transaction.amount if transaction.transaction_type == "credit" else -transaction.amount
+    # Calculate balance delta using account-type-aware logic
+    account_type = account.get('account_type', 'asset')
+    amount = transaction.amount
+    delta = calculate_balance_delta(account_type, transaction_type, amount)
+    
     await db.accounts.update_one(
         {"id": transaction.account_id},
         {"$inc": {"current_balance": delta}}
     )
     
-    await create_audit_log(current_user.id, current_user.full_name, "transaction", transaction.id, "create")
+    await create_audit_log(
+        current_user.id,
+        current_user.full_name,
+        "transaction",
+        transaction.id,
+        "create",
+        {
+            "account_type": account_type,
+            "transaction_type": transaction_type,
+            "amount": amount,
+            "balance_delta": delta
+        }
+    )
+    
     return transaction
 
 
