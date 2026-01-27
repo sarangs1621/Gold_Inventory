@@ -1089,7 +1089,7 @@ class Purchase(BaseModel):
     account_id: Optional[str] = None  # Account from which payment was made
     advance_in_gold_grams: Optional[float] = None  # Gold we gave vendor previously, now used as credit (3 decimals)
     exchange_in_gold_grams: Optional[float] = None  # Gold exchanged from vendor during purchase (3 decimals)
-    status: str = "draft"  # "draft" or "finalized" - controls when stock IN and payable are created
+    status: str  # MUST be calculated: "Finalized (Unpaid)" | "Partially Paid" | "Paid" | "Draft" (Draft only for future explicit save-as-draft feature)
     finalized_at: Optional[datetime] = None
     finalized_by: Optional[str] = None
     locked: bool = False  # Finalized purchases are locked
@@ -3448,6 +3448,16 @@ async def create_purchase(request: Request, purchase_data: dict, current_user: U
         paid_amount=purchase_data["paid_amount_money"],
         total_amount=purchase_data["amount_total"]
     )
+    
+    # ========== SAFETY ASSERTION: PREVENT "DRAFT" WITH COMMITTED DATA ==========
+    # A purchase MUST NEVER be "Draft" if we're creating inventory/accounting entries
+    # "Draft" is ONLY for future explicit "save as draft" feature (not yet implemented)
+    if calculated_status.lower() == "draft":
+        raise HTTPException(
+            status_code=500,
+            detail="CRITICAL ERROR: Cannot save purchase as 'Draft' when inventory/accounting entries are being created. This violates ERP business rules."
+        )
+
     
     # Set creation and finalization metadata
     finalize_time = datetime.now(timezone.utc)

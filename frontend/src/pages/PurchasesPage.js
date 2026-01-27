@@ -35,7 +35,6 @@ export default function PurchasesPage() {
   const [accounts, setAccounts] = useState([]);
   const [showDialog, setShowDialog] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState(null);
-  const [finalizing, setFinalizing] = useState(null);
   
   // Loading states
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +45,6 @@ export default function PurchasesPage() {
   const [viewPurchase, setViewPurchase] = useState(null);
   
   // Confirmation Dialogs
-  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [confirmPurchase, setConfirmPurchase] = useState(null);
   const [impactData, setImpactData] = useState(null);
@@ -335,43 +333,6 @@ export default function PurchasesPage() {
     }
   };
 
-  const handleFinalizePurchase = async (purchase) => {
-    setConfirmPurchase(purchase);
-    setConfirmLoading(true);
-    try {
-      const response = await API.get(`/api/purchases/${purchase.id}/finalize-impact`);
-      setImpactData(response.data);
-      setShowFinalizeConfirm(true);
-    } catch (error) {
-      console.error('Error fetching finalize impact:', error);
-      toast.error('Failed to load confirmation data');
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
-  const confirmFinalizePurchase = async () => {
-    if (!confirmPurchase) return;
-    
-    setConfirmLoading(true);
-    setFinalizing(confirmPurchase.id);
-    try {
-      await API.post(`/api/purchases/${confirmPurchase.id}/finalize`);
-      toast.success('Purchase finalized successfully!');
-      setShowFinalizeConfirm(false);
-      setConfirmPurchase(null);
-      setImpactData(null);
-      loadPurchases();
-    } catch (error) {
-      console.error('Error finalizing purchase:', error);
-      const errorMsg = extractErrorMessage(error, 'Failed to finalize purchase');
-      toast.error(errorMsg);
-    } finally {
-      setFinalizing(null);
-      setConfirmLoading(false);
-    }
-  };
-
   const handleDeletePurchase = async (purchase) => {
     setConfirmPurchase(purchase);
     setConfirmLoading(true);
@@ -418,16 +379,29 @@ export default function PurchasesPage() {
   };
 
   const getStatusBadge = (status) => {
+    // Handle new status values: "Finalized (Unpaid)", "Partially Paid", "Paid", "Draft"
+    if (status === 'Paid') {
+      return <Badge className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1 inline" />Paid</Badge>;
+    } else if (status === 'Partially Paid') {
+      return <Badge className="bg-yellow-100 text-yellow-800"><AlertTriangle className="w-3 h-3 mr-1 inline" />Partially Paid</Badge>;
+    } else if (status === 'Finalized (Unpaid)') {
+      return <Badge className="bg-orange-100 text-orange-800"><Lock className="w-3 h-3 mr-1 inline" />Finalized (Unpaid)</Badge>;
+    } else if (status === 'Draft') {
+      return <Badge className="bg-blue-100 text-blue-800">Draft</Badge>;
+    }
+    // Backward compatibility for old statuses
     if (status === 'finalized') {
       return <Badge className="bg-green-100 text-green-800"><Lock className="w-3 h-3 mr-1 inline" />Finalized</Badge>;
     }
-    return <Badge className="bg-blue-100 text-blue-800">Draft</Badge>;
+    return <Badge className="bg-gray-100 text-gray-800">{status}</Badge>;
   };
 
   // Calculate summary stats
   const totalPurchases = purchases.length;
-  const draftPurchases = purchases.filter(p => p.status === 'draft').length;
-  const finalizedPurchases = purchases.filter(p => p.status === 'finalized').length;
+  // Draft count: purchases with status "Draft"
+  const draftPurchases = purchases.filter(p => p.status === 'Draft' || p.status === 'draft').length;
+  // Finalized count: all non-Draft purchases
+  const finalizedPurchases = purchases.filter(p => p.status !== 'Draft' && p.status !== 'draft').length;
   const totalWeight = purchases.reduce((sum, p) => sum + (p.weight_grams || 0), 0);
   const totalValue = purchases.reduce((sum, p) => sum + (p.amount_total || 0), 0);
 
@@ -518,8 +492,10 @@ export default function PurchasesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="finalized">Finalized</SelectItem>
+                  <SelectItem value="Draft">Draft</SelectItem>
+                  <SelectItem value="Finalized (Unpaid)">Finalized (Unpaid)</SelectItem>
+                  <SelectItem value="Partially Paid">Partially Paid</SelectItem>
+                  <SelectItem value="Paid">Paid</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -603,40 +579,36 @@ export default function PurchasesPage() {
                             className="text-indigo-600 hover:text-indigo-700"
                             onClick={() => handleViewPurchase(purchase)}
                             title="View Purchase Details"
+                            data-testid={`view-purchase-${purchase.id}`}
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
                           
-                          {purchase.status === 'draft' && (
+                          {/* Edit and Delete only for Draft purchases */}
+                          {(purchase.status === 'Draft' || purchase.status === 'draft') && (
                             <>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleOpenDialog(purchase)}
                                 title="Edit Purchase"
+                                data-testid={`edit-purchase-${purchase.id}`}
                               >
                                 <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => handleFinalizePurchase(purchase)}
-                                disabled={finalizing === purchase.id}
-                                title="Finalize Purchase"
-                              >
-                                <CheckCircle className="w-4 h-4 mr-1" />
-                                {finalizing === purchase.id ? 'Finalizing...' : 'Finalize'}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
                                 onClick={() => handleDeletePurchase(purchase)}
                                 title="Delete Purchase"
+                                data-testid={`delete-purchase-${purchase.id}`}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
                             </>
                           )}
-                          {purchase.status === 'finalized' && (
+                          {/* Show locked badge for all finalized purchases */}
+                          {purchase.status !== 'Draft' && purchase.status !== 'draft' && (
                             <Badge className="bg-green-100 text-green-800">
                               <Lock className="w-3 h-3 mr-1" />Locked
                             </Badge>
@@ -958,318 +930,6 @@ export default function PurchasesPage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Enhanced Finalize Confirmation Dialog with Comprehensive Cost Breakdown */}
-      <Dialog open={showFinalizeConfirm} onOpenChange={setShowFinalizeConfirm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-              <CheckCircle className="w-6 h-6 text-yellow-600" />
-              Finalize Purchase Confirmation
-            </DialogTitle>
-          </DialogHeader>
-
-          {confirmPurchase && (
-            <div className="space-y-6">
-              {/* Purchase Header Info */}
-              <div className="bg-slate-100 rounded-lg p-4 border border-slate-300">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600">Vendor</p>
-                    <p className="text-lg font-bold text-slate-900">{getVendorName(confirmPurchase.vendor_party_id)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-slate-600">Date</p>
-                    <p className="text-lg font-semibold">{formatDate(confirmPurchase.date)}</p>
-                  </div>
-                </div>
-                {confirmPurchase.description && (
-                  <div className="mt-3">
-                    <p className="text-sm text-slate-600">Description</p>
-                    <p className="text-sm font-medium text-slate-800">{confirmPurchase.description}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Gold Details & Calculation Section */}
-              <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 border-2 border-amber-300 rounded-xl p-5 shadow-md">
-                <h3 className="font-bold text-lg text-amber-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Gold Details & Calculation
-                </h3>
-
-                {/* Gold Details Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <div className="bg-white rounded-lg p-3 border border-amber-200 shadow-sm">
-                    <div className="text-xs text-amber-700 font-medium uppercase mb-1">Weight</div>
-                    <div className="font-mono font-bold text-lg text-amber-900">
-                      {(confirmPurchase.weight_grams || 0).toFixed(3)} g
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white rounded-lg p-3 border border-amber-200 shadow-sm">
-                    <div className="text-xs text-amber-700 font-medium uppercase mb-1">Entered Purity</div>
-                    <div className="font-mono font-bold text-lg text-amber-900">
-                      {confirmPurchase.entered_purity || 999}K
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white rounded-lg p-3 border border-green-200 shadow-sm">
-                    <div className="text-xs text-green-700 font-medium uppercase mb-1">Valuation Purity</div>
-                    <div className="font-mono font-bold text-lg text-green-900">
-                      916K (22K)
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white rounded-lg p-3 border border-blue-200 shadow-sm">
-                    <div className="text-xs text-blue-700 font-medium uppercase mb-1">Rate per Gram</div>
-                    <div className="font-mono font-bold text-lg text-blue-900">
-                      {(confirmPurchase.rate_per_gram || 0).toFixed(2)} OMR
-                    </div>
-                  </div>
-                </div>
-
-                {/* Calculation Formula */}
-                <div className="bg-gradient-to-r from-amber-100 to-yellow-100 rounded-lg p-4 border border-amber-300 mb-4">
-                  <div className="text-sm font-semibold text-amber-900 mb-2">Cost Calculation:</div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-700">Weight × Rate per Gram</span>
-                    <span className="font-mono font-bold text-amber-900">
-                      {(confirmPurchase.weight_grams || 0).toFixed(3)}g × {(confirmPurchase.rate_per_gram || 0).toFixed(2)} OMR/g = {((confirmPurchase.weight_grams || 0) * (confirmPurchase.rate_per_gram || 0)).toFixed(2)} OMR
-                    </span>
-                  </div>
-                </div>
-
-                {/* Total Purchase Amount - Prominent Display */}
-                <div className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 rounded-xl p-4 shadow-lg border-2 border-amber-500">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white font-bold text-base">Total Purchase Amount</span>
-                    <span className="font-mono font-bold text-3xl text-white">
-                      {(confirmPurchase.amount_total || 0).toFixed(2)} OMR
-                    </span>
-                  </div>
-                  {/* Additional charges indicator */}
-                  {Math.abs((confirmPurchase.amount_total || 0) - ((confirmPurchase.weight_grams || 0) * (confirmPurchase.rate_per_gram || 0))) > 0.01 && (
-                    <div className="text-xs text-amber-100 mt-2 flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                      </svg>
-                      Includes adjustment: {((confirmPurchase.amount_total || 0) - ((confirmPurchase.weight_grams || 0) * (confirmPurchase.rate_per_gram || 0))).toFixed(2)} OMR
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Payment Breakdown Section */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-5 shadow-md">
-                <h3 className="font-bold text-lg text-green-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  Payment Breakdown
-                </h3>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-blue-200">
-                    <span className="text-gray-700 font-medium">Total Amount:</span>
-                    <span className="font-mono font-bold text-lg text-blue-900">
-                      {(confirmPurchase.amount_total || 0).toFixed(2)} OMR
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-green-200">
-                    <span className="text-gray-700 font-medium">Paid Amount:</span>
-                    <span className="font-mono font-bold text-lg text-green-700">
-                      {(confirmPurchase.paid_amount_money || 0).toFixed(2)} OMR
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg shadow-md">
-                    <span className="font-bold text-base">Balance Due to Vendor:</span>
-                    <span className="font-mono font-bold text-2xl">
-                      {(confirmPurchase.balance_due_money || 0).toFixed(2)} OMR
-                    </span>
-                  </div>
-
-                  {/* Payment Details */}
-                  {confirmPurchase.paid_amount_money > 0 && (
-                    <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-green-200">
-                      <div className="bg-white rounded p-2 border border-green-100">
-                        <p className="text-xs text-gray-600">Payment Mode</p>
-                        <p className="font-semibold text-sm text-gray-900">{confirmPurchase.payment_mode || 'Cash'}</p>
-                      </div>
-                      {confirmPurchase.account_id && (
-                        <div className="bg-white rounded p-2 border border-green-100">
-                          <p className="text-xs text-gray-600">Payment Account</p>
-                          <p className="font-semibold text-sm text-gray-900">
-                            {accounts.find(a => a.id === confirmPurchase.account_id)?.name || 'N/A'}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Gold Settlement Section - Only if applicable */}
-              {(confirmPurchase.advance_in_gold_grams > 0 || confirmPurchase.exchange_in_gold_grams > 0) && (
-                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-300 rounded-xl p-5 shadow-md">
-                  <h3 className="font-bold text-lg text-purple-900 mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                    Gold Settlement Details
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {confirmPurchase.advance_in_gold_grams > 0 && (
-                      <div className="bg-white rounded-lg p-3 border border-purple-200">
-                        <div className="text-xs text-purple-700 font-medium uppercase mb-1">Advance Gold Returned</div>
-                        <div className="font-mono font-bold text-lg text-purple-900">
-                          {(confirmPurchase.advance_in_gold_grams || 0).toFixed(3)} g
-                        </div>
-                        <div className="text-xs text-purple-600 mt-1">Previously given to vendor</div>
-                      </div>
-                    )}
-                    
-                    {confirmPurchase.exchange_in_gold_grams > 0 && (
-                      <div className="bg-white rounded-lg p-3 border border-purple-200">
-                        <div className="text-xs text-purple-700 font-medium uppercase mb-1">Exchange Gold Received</div>
-                        <div className="font-mono font-bold text-lg text-purple-900">
-                          {(confirmPurchase.exchange_in_gold_grams || 0).toFixed(3)} g
-                        </div>
-                        <div className="text-xs text-purple-600 mt-1">Gold exchanged</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Impact Summary Section */}
-              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-300 rounded-xl p-5 shadow-md">
-                <h3 className="font-bold text-lg text-indigo-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Impact Summary
-                </h3>
-
-                <div className="space-y-3">
-                  {/* Stock Increase */}
-                  <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-green-200">
-                    <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">Stock Increase</p>
-                      <p className="text-sm text-gray-700">
-                        Inventory will increase by <span className="font-mono font-bold text-green-700">{(confirmPurchase.weight_grams || 0).toFixed(3)}g</span> at <span className="font-bold text-green-700">916 purity (22K)</span> valuation standard
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Vendor Payable */}
-                  {confirmPurchase.balance_due_money > 0 && (
-                    <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-amber-200">
-                      <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
-                        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">Vendor Payable</p>
-                        <p className="text-sm text-gray-700">
-                          Outstanding balance of <span className="font-mono font-bold text-amber-700">{(confirmPurchase.balance_due_money || 0).toFixed(2)} OMR</span> will be recorded as payable to vendor
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Financial Transaction */}
-                  {confirmPurchase.paid_amount_money > 0 && (
-                    <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-blue-200">
-                      <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">Financial Transaction</p>
-                        <p className="text-sm text-gray-700">
-                          Debit transaction of <span className="font-mono font-bold text-blue-700">{(confirmPurchase.paid_amount_money || 0).toFixed(2)} OMR</span> will be recorded in selected account
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Status Change */}
-                  <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-indigo-200">
-                    <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                      <Lock className="w-4 h-4 text-indigo-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">Status Change</p>
-                      <p className="text-sm text-gray-700">
-                        Purchase status will change from <Badge className="mx-1 bg-blue-100 text-blue-800">Draft</Badge> to <Badge className="mx-1 bg-green-100 text-green-800">Finalized</Badge>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Irreversible Action Warning */}
-              <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-red-900 text-base mb-1">⚠️ IRREVERSIBLE ACTION</p>
-                    <p className="text-sm text-red-800">
-                      This action cannot be undone. Once finalized, the purchase will be locked and cannot be edited or deleted. 
-                      All inventory, financial, and vendor records will be permanently updated.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowFinalizeConfirm(false)}
-                  disabled={confirmLoading}
-                  className="flex-1 border-2"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={confirmFinalizePurchase}
-                  disabled={confirmLoading}
-                  className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                >
-                  {confirmLoading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Finalizing...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Confirm & Finalize Purchase
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 
