@@ -9696,7 +9696,7 @@ async def create_return(
         # Create audit log
         await create_audit_log(
             user_id=current_user.id,
-            user_name=current_user.name,
+            user_name=current_user.full_name,            
             module="returns",
             record_id=return_obj.id,
             action="create",
@@ -9878,7 +9878,7 @@ async def update_return(
         # Create audit log
         await create_audit_log(
             user_id=current_user.id,
-            user_name=current_user.name,
+            user_name=current_user.full_name,            
             module="returns",
             record_id=return_id,
             action="update",
@@ -10259,7 +10259,7 @@ async def finalize_return(
         # Create audit log
         await create_audit_log(
             user_id=current_user.id,
-            user_name=current_user.name,
+            user_name=current_user.full_name,            
             module="returns",
             record_id=return_id,
             action="finalize",
@@ -10374,7 +10374,7 @@ async def finalize_return(
             # 6. Create audit log for rollback
             await create_audit_log(
                 user_id=current_user.id,
-                user_name=current_user.name,
+                user_name=current_user.full_name,
                 module="returns",
                 record_id=return_id,
                 action="finalize_rollback",
@@ -10431,7 +10431,7 @@ async def delete_return(
         # Create audit log
         await create_audit_log(
             user_id=current_user.id,
-            user_name=current_user.name,
+            user_name=current_user.full_name,
             module="returns",
             record_id=return_id,
             action="delete",
@@ -10478,17 +10478,33 @@ async def get_return_finalize_impact(
     
     # Add specific impacts based on return type
     if return_type == 'sale_return':
+        # Convert Decimal128 to float for formatting
+        total_weight = float(return_doc.get('total_weight_grams', 0))
+        refund_money = float(return_doc.get('refund_m   oney_amount', 0))
+        refund_gold = float(return_doc.get('refund_gold_grams', 0))
+        
         impact["impacts"] = [
             f"✅ Stock IN: {return_doc.get('total_weight_grams', 0):.3f}g returned to inventory",
             f"💰 Customer Refund: {return_doc.get('refund_money_amount', 0):.2f} OMR" if refund_mode in ['money', 'mixed'] else None,
             f"🪙 Gold Refund: {return_doc.get('refund_gold_grams', 0):.3f}g to customer" if refund_mode in ['gold', 'mixed'] else None,
+            f"✅ Stock IN: {total_weight:.3f}g returned to inventory",
+            f"💰 Customer Refund: {refund_money:.2f} OMR" if refund_mode in ['money', 'mixed'] else None,
+            f"🪙 Gold Refund: {refund_gold:.3f}g to customer" if refund_mode in ['gold', 'mixed'] else None,
             "📊 Customer outstanding will be updated"
         ]
     else:  # purchase_return
+        # Convert Decimal128 to float for formatting
+        total_weight = float(return_doc.get('total_weight_grams', 0))
+        refund_money = float(return_doc.get('refund_money_amount', 0))
+        refund_gold = float(return_doc.get('refund_gold_grams', 0))
+        
         impact["impacts"] = [
             f"❌ Stock OUT: {return_doc.get('total_weight_grams', 0):.3f}g returned to vendor",
             f"💰 Vendor Refund: {return_doc.get('refund_money_amount', 0):.2f} OMR received" if refund_mode in ['money', 'mixed'] else None,
             f"🪙 Gold Refund: {return_doc.get('refund_gold_grams', 0):.3f}g from vendor" if refund_mode in ['gold', 'mixed'] else None,
+            f"❌ Stock OUT: {total_weight:.3f}g returned to vendor",
+            f"💰 Vendor Refund: {refund_money:.2f} OMR received" if refund_mode in ['money', 'mixed'] else None,
+            f"🪙 Gold Refund: {refund_gold:.3f}g from vendor" if refund_mode in ['gold', 'mixed'] else None,
             "📊 Vendor payable will be updated"
         ]
     

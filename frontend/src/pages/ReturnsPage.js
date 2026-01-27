@@ -12,8 +12,7 @@ const ReturnsPage = () => {
   const [success, setSuccess] = useState('');
   
   // Pagination
-  const { currentPage, totalPages, setTotalPages, handlePageChange } = useURLPagination();
-  const [totalCount, setTotalCount] = useState(0);
+  const { currentPage, setPage, pagination, setPagination } = useURLPagination();
   const pageSize = 10;
   
   // Filters
@@ -71,15 +70,15 @@ const ReturnsPage = () => {
       const response = await API.get('/api/returns', { params });
       
       setReturns(response.data.items || []);
-      setTotalCount(response.data.pagination?.total_count || 0);
-      setTotalPages(response.data.pagination?.total_pages || 1);
+      setPagination(response.data.pagination);
+      setError(''); // Clear any previous errors on successful load
     } catch (err) {
       console.error('Error loading returns:', err);
       setError(err.response?.data?.detail || 'Failed to load returns');
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filters, setTotalPages]);
+  }, [currentPage, filters, setPagination]);
   
   useEffect(() => {
     loadReturns();
@@ -526,16 +525,14 @@ const ReturnsPage = () => {
             </table>
             
             {/* Pagination */}
-            <div className="px-6 py-4 border-t border-gray-200">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-              />
-              <p className="text-sm text-gray-700 mt-2">
-                Showing {returns.length} of {totalCount} returns
-              </p>
-            </div>
+            {pagination && (
+              <div className="px-6 py-4 border-t border-gray-200">
+                <Pagination
+                  pagination={pagination}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
           </>
         )}
       </div>
